@@ -15,7 +15,6 @@ Roughly, it escapes when |v|·∆t is larger than about ρ.
 
 ## Question 2. Set ew = 1, so that no energy is lost at a bounce, and let the ball run for a few thousand steps. Does the peak height stay put, creep upward, or decay? Gravity and the bounce rule are the only things acting, so if it changes at all, where is that energy coming from?
 
-With ew = 1 the peak should stay constant. In practice it usually creeps upward (or sometimes wobbles). Energy isn't being lost, but it is being made up by the numerical method.
+Because dt is finite, the ball overshoots the wall by a small amount, and the code teleports it back inward without changing its speed. This adds a small error to the ball's energy. The longer the code runs, the more this error accumulates, until it becomes noticeable.
 
-The time-stepping method isn't exactly energy-conserving. Simple Euler stepping adds a tiny bit of energy every step, and over thousands of steps it adds up.
-And the bounce is detected late. The ball has already sunk a little into the wall when the bounce is noticed. Flipping the velocity without moving the ball back out of the wall gives it a small free push each time.
+At larger values of dt, the energy error is noticeable much sooner. The velocities become very large and keep increasing: at higher velocities more tunneling happens, so the code has to teleport the ball back inward more often without changing its speed, which adds even more energy error.
