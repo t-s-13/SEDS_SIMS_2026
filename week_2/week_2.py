@@ -80,7 +80,7 @@ def spread(x, y):
         dx = 1
     else:
         return
-    # actually MOVE the water (old version copied it and left the original behind)
+    # actually MOVE the water
     grid[y][x] = 0
     grid[y][x + dx] = 2
     spread_done.add((x + dx, y))
