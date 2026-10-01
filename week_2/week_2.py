@@ -2,17 +2,13 @@ import pygame
 import numpy as np
 import random
 
-"""1: sand
-   0: air
-  -1: bedrock
-   2: water"""
+"""PRESS 1: Sand 2: Water, 3: Stone (accidently used cell = -1 to indicate stone in the code)"""
 
 COLORS = {
      0: (20, 20, 30),     # air/void
      2: (17, 17, 132),    # water
 }
 
-# Sand colour bands - each "layer" of poured sand uses the next colour
 SAND_PALETTE = [
     (255, 214, 0),    # vivid yellow
     (255, 140, 0),    # bright orange
@@ -25,68 +21,75 @@ SAND_PALETTE = [
 ]
 LAYER_SIZE = 12       # how many grains are poured before the colour changes
 
-# Bedrock look
-ROCK_TOP = (120, 110, 165)      # gradient colour at the top of the screen
-ROCK_BOTTOM = (55, 50, 90)      # gradient colour at the bottom of the screen
-ROCK_HIGHLIGHT = (185, 175, 225)  # light edge where rock meets air above
-ROCK_SHADOW = (28, 24, 48)        # dark edge where rock meets air below/sides
+STONE_TOP = (120, 110, 165)        # gradient colour at the top of the screen
+STONE_BOTTOM = (55, 50, 90)        # gradient colour at the bottom of the screen
+STONE_HIGHLIGHT = (185, 175, 225)  # light edge where stone meets air above
+STONE_SHADOW = (28, 24, 48)        # dark edge where stone meets air below/sides
 
-n = 33
-CELL = 30
+n = 60
+CELL = 16   # 60 * 16 = 960px window
 
 grid = np.zeros((n, n))
-shade = np.zeros((n, n), dtype=int)   # which palette colour each sand grain has
-grid[n-1] = -1  # bedrock floor
+shade = np.zeros((n, n), dtype=int)
+grid[n-1] = -1  # stone floor
 
-# fixed random variation per cell so the rock looks textured (same every run)
-rock_noise = np.random.RandomState(7).randint(-14, 15, (n, n))
+# fixed random variation per cell so the stone looks textured
+stone_noise = np.random.RandomState(7).randint(-14, 15, (n, n))
+
+# water cells that already spread sideways this step (so they don't move twice)
+spread_done = set()
 
 
 def build_structures():
     # funnel near the top
-    for i in range(5):
-        grid[6 + i][4 + i] = -1      # left wall going down-right
-        grid[6 + i][14 - i] = -1     # right wall going down-left
+    for i in range(9):
+        grid[11 + i][7 + i] = -1  
+        grid[11 + i][25 - i] = -1 
 
     # floating ledges
-    grid[16, 2:10] = -1
-    grid[20, 12:19] = -1
-    grid[12, 20:27] = -1
+    grid[29, 4:18] = -1
+    grid[36, 22:35] = -1
+    grid[22, 36:49] = -1
 
     # basin on the bottom left
-    grid[27:32, 3] = -1
-    grid[27:32, 11] = -1
+    grid[49:59, 5] = -1
+    grid[49:59, 20] = -1
 
     # arch in the middle
-    grid[25:32, 14] = -1
-    grid[25:32, 18] = -1
-    grid[24, 13:20] = -1
+    grid[45:59, 25] = -1
+    grid[45:59, 33] = -1
+    grid[44, 24:35] = -1
 
     # stepped pyramid on the bottom right
-    for step in range(5):
-        grid[31 - step, 22 + step:31 - step] = -1
+    for step in range(8):
+        grid[n - 2 - step, 40 + step:56 - step] = -1
 
 
 def spread(x, y):
     left_open  = (x - 1 >= 0) and (grid[y][x - 1] == 0)
     right_open = (x + 1 < n)  and (grid[y][x + 1] == 0)
-    if left_open:
-        grid[y][x-1] = 2
+    if left_open and right_open:
+        dx = random.choice([-1, 1])
+    elif left_open:
+        dx = -1
     elif right_open:
-        grid[y][x+1] = 2
-    elif left_open and right_open:
-        grid[y][x+1] = 2
-        grid[y][x-1] = 2
+        dx = 1
+    else:
+        return
+    # actually MOVE the water (old version copied it and left the original behind)
+    grid[y][x] = 0
+    grid[y][x + dx] = 2
+    spread_done.add((x + dx, y))
 
 
 def check_down(x, y):
     if y + 1 >= n:
-        return "bedrock"  # bottom of grid acts like a floor
+        return "stone"
     val = grid[y + 1][x]
     if val == 0:
         return "air"
     elif val == -1:
-        return "bedrock"
+        return "stone"
     elif val == 1:
         return "sand"
     elif val == 2:
@@ -110,7 +113,7 @@ def move_down(x, y):
 
 
 def sink_through_water(x, y):
-    # sand moves down into water's spot, water moves up into sand's old spot
+    # sand moves down into water's spot and water moves up into sand's old spot
     grid[y][x] = 2
     grid[y + 1][x] = 1
     shade[y + 1][x] = shade[y][x]
@@ -144,7 +147,7 @@ def move_sideways(x, y):
     # for sand -
     if grid[y][x] == 1:
         if y + 1 >= n:
-            return  # already at bottom row, nowhere to go sideways-down to
+            return  # already at bottom row so nowhere to go sideways-down to
 
         left_open  = (x - 1 >= 0) and (grid[y + 1][x - 1] == 0)
         right_open = (x + 1 < n)  and (grid[y + 1][x + 1] == 0)
@@ -158,12 +161,12 @@ def move_sideways(x, y):
             move_right(x, y)
         elif left_open:
             move_left(x, y)
-        # else: blocked both sides, stays put
+        # else: blocked both sides so stays put
 
     # for water -
     if grid[y][x] == 2:
         if y + 1 >= n:
-            return  # already at bottom row, nowhere to go sideways-down to
+            return  # already at bottom row so nowhere to go sideways-down to
 
         left_open  = (x - 1 >= 0) and (grid[y + 1][x - 1] == 0)
         right_open = (x + 1 < n)  and (grid[y + 1][x + 1] == 0)
@@ -182,34 +185,37 @@ def move_sideways(x, y):
 
 
 def step(grid):
-    """bottom→top guarantees each grain moves at most once per step() call."""
+    """bottom -> top guarantees each grain moves at most once per step() call."""
+    spread_done.clear()
     for y in range(n - 2, -1, -1):
         for x in range(n):
+            if (x, y) in spread_done:
+                continue  # this water already spread sideways this step
             if grid[y][x] in (1, 2):
                 cell_below = check_down(x, y)
                 if cell_below == "air":
                     move_down(x, y)
                 elif cell_below == "water" and grid[y][x] == 1:  # ONLY sand sinks
                     sink_through_water(x, y)
-                elif cell_below in ("sand", "bedrock", "water"):  # Water hits water and spreads
+                elif cell_below in ("sand", "stone", "water"):  # Water hits water and spreads
                     move_sideways(x, y)
     return grid
 
 
-def is_rock(x, y):
-    # anything off the grid counts as bedrock so edges don't draw on the borders
+def is_stone(x, y):
+    # anything off the grid counts as stone so edges don't draw on the borders
     if x < 0 or x >= n or y < 0 or y >= n:
         return True
     return grid[y][x] == -1
 
 
-def draw_bedrock(screen, grid):
+def draw_stone(screen, grid):
     ys, xs = np.where(grid == -1)
     for y, x in zip(ys, xs):
         # vertical gradient + per-cell texture
         t = y / (n - 1)
         base = [
-            int(ROCK_TOP[i] + (ROCK_BOTTOM[i] - ROCK_TOP[i]) * t) + rock_noise[y][x]
+            int(STONE_TOP[i] + (STONE_BOTTOM[i] - STONE_TOP[i]) * t) + stone_noise[y][x]
             for i in range(3)
         ]
         base = tuple(max(0, min(255, c)) for c in base)
@@ -217,17 +223,17 @@ def draw_bedrock(screen, grid):
         px, py = x * CELL, y * CELL
         pygame.draw.rect(screen, base, (px, py, CELL, CELL))
 
-        # light edge on top where the rock meets air
-        if not is_rock(x, y - 1):
-            pygame.draw.rect(screen, ROCK_HIGHLIGHT, (px, py, CELL, 4))
-        # dark edge underneath where the rock meets air
-        if not is_rock(x, y + 1):
-            pygame.draw.rect(screen, ROCK_SHADOW, (px, py + CELL - 4, CELL, 4))
+        # light edge on top where the stone meets air
+        if not is_stone(x, y - 1):
+            pygame.draw.rect(screen, STONE_HIGHLIGHT, (px, py, CELL, 2))
+        # dark edge underneath where the stone meets air
+        if not is_stone(x, y + 1):
+            pygame.draw.rect(screen, STONE_SHADOW, (px, py + CELL - 2, CELL, 2))
         # dark thin edges on the sides
-        if not is_rock(x - 1, y):
-            pygame.draw.rect(screen, ROCK_SHADOW, (px, py, 3, CELL))
-        if not is_rock(x + 1, y):
-            pygame.draw.rect(screen, ROCK_SHADOW, (px + CELL - 3, py, 3, CELL))
+        if not is_stone(x - 1, y):
+            pygame.draw.rect(screen, STONE_SHADOW, (px, py, 1, CELL))
+        if not is_stone(x + 1, y):
+            pygame.draw.rect(screen, STONE_SHADOW, (px + CELL - 1, py, 1, CELL))
 
 
 def draw_grid(screen, grid):
@@ -236,9 +242,8 @@ def draw_grid(screen, grid):
         for y, x in zip(ys, xs):
             pygame.draw.rect(screen, color, (x * CELL, y * CELL, CELL, CELL))
 
-    draw_bedrock(screen, grid)
+    draw_stone(screen, grid)
 
-    # sand: colour comes from each grain's layer
     ys, xs = np.where(grid == 1)
     for y, x in zip(ys, xs):
         color = SAND_PALETTE[shade[y][x] % len(SAND_PALETTE)]
@@ -251,8 +256,8 @@ pygame.init()
 screen = pygame.display.set_mode((n * CELL, n * CELL))
 clock = pygame.time.Clock()
 
-current_material = 1  # 1=sand, 2=water
-grains_poured = 0     # drives the layer colour
+current_material = 1  # 1=sand, 2=water, 3=stone
+grains_poured = 0
 
 running = True
 while running:
@@ -264,6 +269,8 @@ while running:
                 current_material = 1
             elif e.key == pygame.K_2:
                 current_material = 2
+            elif e.key == pygame.K_3:
+                current_material = 3
 
     if pygame.mouse.get_pressed()[0]:
         mx, my = pygame.mouse.get_pos()
@@ -275,6 +282,8 @@ while running:
                 grains_poured += 1
             elif current_material == 2:
                 grid[gy][gx] = 2
+            elif current_material == 3:
+                grid[gy][gx] = -1
 
     if is_grid_full(grid):
         running = False
