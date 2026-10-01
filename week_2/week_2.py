@@ -2,7 +2,10 @@ import pygame
 import numpy as np
 import random
 
-"""PRESS 1: Sand 2: Water, 3: Stone (accidently used cell = -1 to indicate stone in the code)"""
+"""1: sand
+   0: air
+  -1: stone
+   2: water"""
 
 COLORS = {
      0: (20, 20, 30),     # air/void
@@ -21,16 +24,17 @@ SAND_PALETTE = [
 ]
 LAYER_SIZE = 12       # how many grains are poured before the colour changes
 
+# Stone look
 STONE_TOP = (120, 110, 165)        # gradient colour at the top of the screen
 STONE_BOTTOM = (55, 50, 90)        # gradient colour at the bottom of the screen
 STONE_HIGHLIGHT = (185, 175, 225)  # light edge where stone meets air above
 STONE_SHADOW = (28, 24, 48)        # dark edge where stone meets air below/sides
 
-n = 60
-CELL = 16   # 60 * 16 = 960px window
+n = 45
+CELL = 22   # 45 * 22 = 990px
 
 grid = np.zeros((n, n))
-shade = np.zeros((n, n), dtype=int)
+shade = np.zeros((n, n), dtype=int)   # which palette colour each sand grain has
 grid[n-1] = -1  # stone floor
 
 # fixed random variation per cell so the stone looks textured
@@ -42,27 +46,27 @@ spread_done = set()
 
 def build_structures():
     # funnel near the top
-    for i in range(9):
-        grid[11 + i][7 + i] = -1  
-        grid[11 + i][25 - i] = -1 
+    for i in range(7):
+        grid[8 + i][5 + i] = -1
+        grid[8 + i][19 - i] = -1
 
     # floating ledges
-    grid[29, 4:18] = -1
-    grid[36, 22:35] = -1
-    grid[22, 36:49] = -1
+    grid[22, 3:14] = -1
+    grid[27, 16:26] = -1
+    grid[16, 27:37] = -1
 
     # basin on the bottom left
-    grid[49:59, 5] = -1
-    grid[49:59, 20] = -1
+    grid[37:44, 4] = -1
+    grid[37:44, 15] = -1
 
     # arch in the middle
-    grid[45:59, 25] = -1
-    grid[45:59, 33] = -1
-    grid[44, 24:35] = -1
+    grid[34:44, 19] = -1
+    grid[34:44, 25] = -1
+    grid[33, 18:27] = -1
 
     # stepped pyramid on the bottom right
-    for step in range(8):
-        grid[n - 2 - step, 40 + step:56 - step] = -1
+    for step in range(7):
+        grid[n - 2 - step, 30 + step:42 - step] = -1
 
 
 def spread(x, y):
@@ -185,7 +189,7 @@ def move_sideways(x, y):
 
 
 def step(grid):
-    """bottom -> top guarantees each grain moves at most once per step() call."""
+    """bottom→top guarantees each grain moves at most once per step() call."""
     spread_done.clear()
     for y in range(n - 2, -1, -1):
         for x in range(n):
@@ -203,7 +207,6 @@ def step(grid):
 
 
 def is_stone(x, y):
-    # anything off the grid counts as stone so edges don't draw on the borders
     if x < 0 or x >= n or y < 0 or y >= n:
         return True
     return grid[y][x] == -1
@@ -225,15 +228,15 @@ def draw_stone(screen, grid):
 
         # light edge on top where the stone meets air
         if not is_stone(x, y - 1):
-            pygame.draw.rect(screen, STONE_HIGHLIGHT, (px, py, CELL, 2))
+            pygame.draw.rect(screen, STONE_HIGHLIGHT, (px, py, CELL, 3))
         # dark edge underneath where the stone meets air
         if not is_stone(x, y + 1):
-            pygame.draw.rect(screen, STONE_SHADOW, (px, py + CELL - 2, CELL, 2))
+            pygame.draw.rect(screen, STONE_SHADOW, (px, py + CELL - 3, CELL, 3))
         # dark thin edges on the sides
         if not is_stone(x - 1, y):
-            pygame.draw.rect(screen, STONE_SHADOW, (px, py, 1, CELL))
+            pygame.draw.rect(screen, STONE_SHADOW, (px, py, 2, CELL))
         if not is_stone(x + 1, y):
-            pygame.draw.rect(screen, STONE_SHADOW, (px + CELL - 1, py, 1, CELL))
+            pygame.draw.rect(screen, STONE_SHADOW, (px + CELL - 2, py, 2, CELL))
 
 
 def draw_grid(screen, grid):
@@ -256,7 +259,7 @@ pygame.init()
 screen = pygame.display.set_mode((n * CELL, n * CELL))
 clock = pygame.time.Clock()
 
-current_material = 1  # 1=sand, 2=water, 3=stone
+current_material = 1  # 0=erase, 1=sand, 2=water, 3=stone
 grains_poured = 0
 
 running = True
@@ -265,7 +268,9 @@ while running:
         if e.type == pygame.QUIT:
             running = False
         if e.type == pygame.KEYDOWN:
-            if e.key == pygame.K_1:
+            if e.key == pygame.K_0:
+                current_material = 0
+            elif e.key == pygame.K_1:
                 current_material = 1
             elif e.key == pygame.K_2:
                 current_material = 2
@@ -275,15 +280,18 @@ while running:
     if pygame.mouse.get_pressed()[0]:
         mx, my = pygame.mouse.get_pos()
         gx, gy = mx // CELL, my // CELL
-        if 0 <= gx < n and 0 <= gy < n and grid[gy][gx] == 0:
-            if current_material == 1:
-                grid[gy][gx] = 1
-                shade[gy][gx] = (grains_poured // LAYER_SIZE) % len(SAND_PALETTE)
-                grains_poured += 1
-            elif current_material == 2:
-                grid[gy][gx] = 2
-            elif current_material == 3:
-                grid[gy][gx] = -1
+        if 0 <= gx < n and 0 <= gy < n:
+            if current_material == 0:
+                grid[gy][gx] = 0
+            elif grid[gy][gx] == 0:
+                if current_material == 1:
+                    grid[gy][gx] = 1
+                    shade[gy][gx] = (grains_poured // LAYER_SIZE) % len(SAND_PALETTE)
+                    grains_poured += 1
+                elif current_material == 2:
+                    grid[gy][gx] = 2
+                elif current_material == 3:
+                    grid[gy][gx] = -1
 
     if is_grid_full(grid):
         running = False
